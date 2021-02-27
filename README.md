@@ -1,8 +1,8 @@
-# Template Shiny operator for Tercen
+# Volcano plot Shiny operator for Tercen
 
 ##### Description
 
-The `Template Shiny operator` is a template repository for the creation of Shiny operators in Tercen.
+Launches a Shiny application for a customizable volcano plot.
 
 ##### Usage
 
