@@ -300,7 +300,6 @@ server <- function(input, output, session) {
   x_var.selected <- ".x"
   y_var.selected <- ".y"
   g_var.selected <- "gene_name"
-  sheet.selected <- " "
   
   # transform_var_x.selected <- "-"
   # transform_var_y.selected <- "-"
@@ -389,11 +388,13 @@ server <- function(input, output, session) {
     } else if (input$criterion == "fc") {
       df <- df %>% arrange(desc(abs(`Fold change (log2)`)))
       df_out <-
-        df %>% top_n(input$top_x, abs(`Fold change (log2)`)) %>% select(Name, Change, `Fold change (log2)`, `Significance`)
+        df %>% top_n(input$top_x, abs(`Fold change (log2)`)) %>% 
+        select(Name, Change, `Fold change (log2)`, `Significance`)
     } else if (input$criterion == "sig") {
       df <- df %>% arrange(desc(`Significance`))
       df_out <-
-        df %>% top_n(input$top_x, `Significance`) %>% select(Name, Change, `Fold change (log2)`, `Significance`)
+        df %>% top_n(input$top_x, `Significance`) %>% 
+        select(Name, Change, `Fold change (log2)`, `Significance`)
     }
     
     #Add user selected hits, but remove them when already present
@@ -430,6 +431,10 @@ server <- function(input, output, session) {
   
   ################ SELECT COLUMNS AND ANNOTATE CHANGES #########
   df_filtered <- reactive({
+    req(input$x_var)
+    req(input$y_var)
+    req(input$g_var)
+    
     df <- getData()
     
     x_choice <- input$x_var
@@ -578,16 +583,12 @@ server <- function(input, output, session) {
       if (length(newColors) < 3) {
         newColors <- rep(newColors, times = (round(3 / length(newColors))) + 1)
       }
-      
-      
     }
     
     # Remove the color for category 'increased' when absent
     if (("Increased" %in% df$Change) == FALSE) {
       newColors <- newColors[c(1, 3)]
-      
     }
-    
     
     p <-  ggplot(data = df) +
       aes(x = `Fold change (log2)`) +
@@ -602,7 +603,6 @@ server <- function(input, output, session) {
       theme_light(base_size = 16) +
       aes(color = Change) +
       scale_color_manual(values = newColors) +
-      
       NULL
     
     if (input$dark) {
@@ -974,7 +974,7 @@ server <- function(input, output, session) {
   output$hover_info <- renderUI({
     req(df_filtered())
     df <- as.data.frame(df_filtered())
-    
+
     hover <- input$plot_hover
     point <-
       nearPoints(
@@ -986,20 +986,20 @@ server <- function(input, output, session) {
       )
     if (nrow(point) == 0)
       return(NULL)
-    
+
     # calculate point position INSIDE the image as percent of total dimensions
     # from left (horizontal) and from top (vertical)
     left_pct <-
       (hover$x - hover$domain$left) / (hover$domain$right - hover$domain$left)
     top_pct <-
       (hover$domain$top - hover$y) / (hover$domain$top - hover$domain$bottom)
-    
+
     # calculate distance from left and bottom side of the picture in pixels
     left_px <-
       hover$range$left + left_pct * (hover$range$right - hover$range$left)
     top_px <-
       hover$range$top + top_pct * (hover$range$bottom - hover$range$top)
-    
+
     # create style property fot tooltip
     # background color is set so tooltip is a bit transparent
     # z-index is set so we are sure are tooltip will be on top
@@ -1013,7 +1013,7 @@ server <- function(input, output, session) {
       top_px + 32,
       "px;"
     )
-    
+
     # actual tooltip created as wellPanel
     wellPanel(style = style,
               p(HTML(
@@ -1033,7 +1033,7 @@ server <- function(input, output, session) {
                 )
               )))
   })
-  
+
   
   ######### DEFINE DOWNLOAD BUTTONS FOR ORDINARY PLOT ###########
   
