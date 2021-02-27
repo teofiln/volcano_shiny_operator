@@ -6,6 +6,8 @@ Launches a Shiny application for a customizable volcano plot.
 
 ##### Usage
 
+**Forthcoming**
+ 
 Input projection|.
 ---|---
 `x-axis`        | type, description 
