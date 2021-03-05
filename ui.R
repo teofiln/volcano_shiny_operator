@@ -1,3 +1,7 @@
+library(shiny)
+library(bs4Dash)
+library(thematic)
+library(waiter)
 
 # ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 # VolcaNoseR - A Shiny app for for nosing around in volcano plots
