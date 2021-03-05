@@ -1,13 +1,12 @@
 library(shiny)
+library(bs4Dash)
 library(ggplot2)
 library(magrittr)
 library(dplyr)
 library(ggrepel)
-library(shinycssloaders)
-library(readxl)
-library(DT)
-library(RCurl)
+library(thematic)
 library(tercen)
+library(waiter)
 
 ############################################
 #### This part should not be modified
@@ -23,17 +22,19 @@ getCtx <- function(session) {
 }
 ####
 ############################################
+#####
 
 server <- function(input, output, session) {
+  
+  ## For plot background to switch with dashboard theme
+  useAutoColor()
+  
+  ## For loading spinner in plot when plot is rendered
+  w <- Waiter$new(id = "coolplot")
+  
+  
   # Session variable - initialize defaults
   genelist.selected <- ""
-  x_var.selected <- ".x"
-  y_var.selected <- ".y"
-  g_var.selected <- "gene_name"
-  sheet.selected <- " "
-  
-  # transform_var_x.selected <- "-"
-  # transform_var_y.selected <- "-"
   
   ###### DATA INPUT ###################
   
@@ -42,7 +43,6 @@ server <- function(input, output, session) {
     values <- list()
     values$data <- ctx %>% 
       select(.x, .y, gene_name)
-    
     return(values)
   }
   
@@ -53,83 +53,62 @@ server <- function(input, output, session) {
   #### DISPLAY UPLOADED DATA (as provided) ##################
   # this part removed as the data are displayed in the Tercen crosstab
   
-  ##### Get Variables from the input ##############
-  
-  observe({
-    df <- getData()
-    
-    var_names  <- names(df)
-    
-    # Get the names of columns that are factors.
-    nms_fact <-
-      names(Filter(
-        function(x)
-          is.factor(x) ||
-          is.integer(x) || is.logical(x) || is.character(x),
-        df
-      ))
-    nms_var <-
-      names(Filter(function(x)
-        is.integer(x) || is.numeric(x) || is.double(x), df))
-    nms_fact <- c("-", nms_fact)
-    
-    updateSelectInput(session, "x_var", choices = var_names, selected = x_var.selected)
-    updateSelectInput(session, "y_var", choices = var_names, selected = y_var.selected)
-    
-    updateSelectInput(session, "g_var", choices = nms_fact, selected = g_var.selected)
-    updateSelectizeInput(session, "user_gene_list", selected = genelist.selected)
-  })
-  
   ################ Select top hits #########
   df_top  <- reactive({
     df <- df_filtered()
     
-    
     if (input$direction == "increased") {
       df <- df %>% filter(Change == "Increased")
-      
     } else if (input$direction == "decreased") {
       df <- df %>% filter(Change == "Decreased")
-      
     } else if (input$direction == "significant") {
       df <- df %>% filter(Change != "Unchanged")
-      
     }
-    
     
     if (input$criterion == "manh") {
       df <-
-        df %>% mutate(`Manhattan distance` = abs(`Significance`) + abs(`Fold change (log2)`)) %>% arrange(desc(`Manhattan distance`))
+        df %>%
+        mutate(`Manhattan distance` = abs(`Significance`) + abs(`Fold change (log2)`)) %>%
+        arrange(desc(`Manhattan distance`))
+      
       df_out <-
-        df %>% top_n(input$top_x, `Manhattan distance`) %>% select(Name,
-                                                                   Change,
-                                                                   `Fold change (log2)`,
-                                                                   `Significance`,
-                                                                   `Manhattan distance`)
+        df %>%
+        top_n(input$top_x, `Manhattan distance`) %>%
+        select(Name,
+               Change,
+               `Fold change (log2)`,
+               `Significance`,
+               `Manhattan distance`)
     } else if (input$criterion == "euclid") {
       df <-
-        df %>% mutate(`Euclidean distance` = sqrt((`Significance`) ^ 2 + (`Fold change (log2)`) ^
-                                                    2)) %>% arrange(desc(`Euclidean distance`))
+        df %>%
+        mutate(`Euclidean distance` = sqrt((`Significance`) ^ 2 + (`Fold change (log2)`) ^2)) %>%
+        arrange(desc(`Euclidean distance`))
+      
       df_out <-
-        df %>% top_n(input$top_x, `Euclidean distance`) %>% select(Name,
-                                                                   Change,
-                                                                   `Fold change (log2)`,
-                                                                   `Significance`,
-                                                                   `Euclidean distance`)
+        df %>%
+        top_n(input$top_x, `Euclidean distance`) %>%
+        select(Name,
+               Change,
+               `Fold change (log2)`,
+               `Significance`,
+               `Euclidean distance`)
+      
     } else if (input$criterion == "fc") {
       df <- df %>% arrange(desc(abs(`Fold change (log2)`)))
       df_out <-
-        df %>% top_n(input$top_x, abs(`Fold change (log2)`)) %>% select(Name, Change, `Fold change (log2)`, `Significance`)
+        df %>% top_n(input$top_x, abs(`Fold change (log2)`)) %>%
+        select(Name, Change, `Fold change (log2)`, `Significance`)
     } else if (input$criterion == "sig") {
       df <- df %>% arrange(desc(`Significance`))
       df_out <-
-        df %>% top_n(input$top_x, `Significance`) %>% select(Name, Change, `Fold change (log2)`, `Significance`)
+        df %>% top_n(input$top_x, `Significance`) %>%
+        select(Name, Change, `Fold change (log2)`, `Significance`)
     }
     
     #Add user selected hits, but remove them when already present
-    df_out <-
-      bind_rows(df_out, df_user()) %>% distinct(Name, .keep_all = TRUE)
-    # }
+    df_out <- bind_rows(df_out, df_user()) %>% 
+      distinct(Name, .keep_all = TRUE)
     
     # observe({print(df_out)})
     return(df_out)
@@ -154,44 +133,28 @@ server <- function(input, output, session) {
     }
     
     return(df_selected_by_name)
-    
-    
   })
   
   ################ SELECT COLUMNS AND ANNOTATE CHANGES #########
   df_filtered <- reactive({
+    
     df <- getData()
     
-    x_choice <- input$x_var
-    y_choice <- input$y_var
-    g_choice <- input$g_var
-    
-    
-    if (g_choice == "-") {
-      koos <-
-        df %>% select(
-          `Fold change (log2)` = !!x_choice ,
-          `Significance` = !!y_choice
-        )
-      koos$Name <- " "
-    } else if (g_choice != "-") {
-      koos <-
-        df %>% select(
-          `Fold change (log2)` = !!x_choice ,
-          `Significance` = !!y_choice,
-          Name = input$g_var
-        )
-      #Remove  names after semicolon for hits with multiple names, seperated by semicolons, e.g.: POLR2J3;POLR2J;POLR2J2
-      koos <- koos %>% mutate(Name = gsub(';.*', '', Name))
-      
-    }
+    koos <-
+      df %>% select(
+        `Fold change (log2)` = .x,
+        `Significance` = .y,
+        Name = gene_name
+      )
+    #Remove  names after semicolon for hits with multiple names, seperated by semicolons, e.g.: POLR2J3;POLR2J;POLR2J2
+    koos <- koos %>% mutate(Name = gsub(';.*', '', Name))
     
     #Update the gene list for user selection
     updateSelectizeInput(session,
                          "user_gene_list",
                          choices = koos$Name,
+                         server = TRUE,
                          selected = genelist.selected)
-    
     
     foldchange_min = input$fc_cutoff[1]
     foldchange_max = input$fc_cutoff[2]
@@ -227,26 +190,9 @@ server <- function(input, output, session) {
     }
     
     return(koos)
-    
   })
   
-  ############## Render the data summary as a dataTable ###########
-  
-  # output$toptableDT <- renderDataTable(
-  #
-  #   df_top(),
-  #   extensions = c('Buttons'),
-  #   rownames = FALSE,
-  #   options = list(dom = 'Blfrtip', buttons = c('copy', 'csv','excel', 'pdf'), autoWidth = FALSE, lengthMenu = c(20, 50, 100)),
-  #   editable = FALSE,selection = 'none'
-  # )
-  
   plot_data <- reactive({
-    if (input$dark) {
-      line_color = "white"
-    } else {
-      line_color = "gray20"
-    }
     
     ############## Adjust X-scaling if necessary ##########
     
@@ -276,49 +222,6 @@ server <- function(input, output, session) {
     df$Change <-
       factor(df$Change, levels = c("Unchanged", "Increased", "Decreased"))
     
-    ########## Determine color use #############
-    if (input$adjustcolors == 1 && input$dark) {
-      newColors <- c("#505050", "#FF3333", "#0092CC")
-    } else if (input$adjustcolors == 1 && input$dark == FALSE) {
-      newColors <- c("grey", "red", "blue")
-    }
-    
-    if (input$adjustcolors == 3 && input$dark) {
-      newColors <- c("#505050", "deepskyblue", "green")
-    } else if (input$adjustcolors == 3 && input$dark == FALSE) {
-      newColors <- c("Grey80", "darkblue", "darkgreen")
-    }
-    
-    
-    if (input$adjustcolors == 4 && input$dark) {
-      newColors <- c("#505050", "#03DAC5", "#BB86FC")
-    }
-    else if (input$adjustcolors == 4 && input$dark == FALSE)
-    {
-      newColors <- c("grey", "turquoise4", "#9932CC")
-      # } else if (input$adjustcolors == 6) {
-      #   newColors <- Okabe_Ito
-    }
-    
-    if (input$adjustcolors == 5) {
-      newColors <-
-        gsub("\\s", "", strsplit(input$user_color_list, ",")[[1]])
-      
-      #If unsufficient colors available, repeat
-      if (length(newColors) < 3) {
-        newColors <- rep(newColors, times = (round(3 / length(newColors))) + 1)
-      }
-      
-      
-    }
-    
-    # Remove the color for category 'increased' when absent
-    if (("Increased" %in% df$Change) == FALSE) {
-      newColors <- newColors[c(1, 3)]
-      
-    }
-    
-    
     p <-  ggplot(data = df) +
       aes(x = `Fold change (log2)`) +
       aes(y = `Significance`) +
@@ -327,40 +230,26 @@ server <- function(input, output, session) {
         size = input$pointSize,
         shape = 16
       ) +
-      
-      # This needs to go here (before annotations)
-      theme_light(base_size = 16) +
-      aes(color = Change) +
-      scale_color_manual(values = newColors) +
-      
-      NULL
-    
-    if (input$dark) {
-      p <- p + theme_light_dark_bg(base_size = 16)
-    }
-    
+      aes(color = Change)
     
     #Indicate cut-offs with dashed lines
     if (input$direction != "decreased")
       p <-
       p + geom_vline(
         xintercept = input$fc_cutoff[2],
-        linetype = "dashed",
-        color = line_color
+        linetype = "dashed"
       )
     if (input$direction != "increased")
       p <-
       p + geom_vline(
         xintercept = input$fc_cutoff[1],
-        linetype = "dashed",
-        color = line_color
+        linetype = "dashed"
       )
     
     p <-
       p + geom_hline(
         yintercept = input$p_cutoff,
-        linetype = "dashed",
-        color = line_color
+        linetype = "dashed"
       )
     
     # if log-scale checked specified
@@ -380,21 +269,18 @@ server <- function(input, output, session) {
           data = df_top(),
           aes(x = `Fold change (log2)`, y = `Significance`),
           shape = 1,
-          color = line_color,
           size = (input$pointSize)
         ) +
         geom_text_repel(
           data = df_top(),
           aes(label = Name),
           size = input$fnt_sz_cand,
-          color = line_color,
           nudge_x = 0.2,
           nudge_y = 0.2,
           box.padding = unit(0.9, "lines"),
           point.padding = unit(.3 + input$pointSize * 0.1, "lines"),
           show.legend = F
         )
-      
     }
     
     p <-
@@ -408,8 +294,6 @@ server <- function(input, output, session) {
     }
     
     ########## Do some formatting of the lay-out ##########
-    
-    
     
     # if title specified
     if (!is.null(input$title)) {
@@ -450,7 +334,6 @@ server <- function(input, output, session) {
     }
     
     p
-    
   })
   
   
@@ -465,64 +348,13 @@ server <- function(input, output, session) {
   })
   
   output$coolplot <- renderPlot(width = width, height = height, {
-    req(input$x_var)
-    req(input$y_var)
-    req(input$g_var)
-    
-    if (input$dark) {
-      line_color = "white"
-    } else {
-      line_color = "gray20"
-    }
+    w$show()
+    w$hide()
     
     df <- as.data.frame(df_filtered())
     #Convert 'Change' to a factor to keep this order, necessary for getting the colors right
     df$Change <-
       factor(df$Change, levels = c("Unchanged", "Increased", "Decreased"))
-    
-    
-    ########## Determine color use #############
-    if (input$adjustcolors == 1 && input$dark) {
-      newColors <- c("#505050", "#FF3333", "#0092CC")
-    } else if (input$adjustcolors == 1 && input$dark == FALSE) {
-      newColors <- c("grey", "red", "blue")
-    }
-    
-    if (input$adjustcolors == 3 && input$dark) {
-      newColors <- c("#505050", "deepskyblue", "green")
-    } else if (input$adjustcolors == 3 && input$dark == FALSE) {
-      newColors <- c("Grey80", "darkblue", "darkgreen")
-    }
-    
-    
-    if (input$adjustcolors == 4 && input$dark) {
-      newColors <- c("#505050", "#03DAC5", "#BB86FC")
-    }
-    else if (input$adjustcolors == 4 && input$dark == FALSE)
-    {
-      newColors <- c("grey", "turquoise4", "#9932CC")
-      # } else if (input$adjustcolors == 6) {
-      #   newColors <- Okabe_Ito
-    }
-    
-    if (input$adjustcolors == 5) {
-      newColors <-
-        gsub("\\s", "", strsplit(input$user_color_list, ",")[[1]])
-      
-      #If unsufficient colors available, repeat
-      if (length(newColors) < 3) {
-        newColors <- rep(newColors, times = (round(3 / length(newColors))) + 1)
-      }
-      
-      
-    }
-    
-    # Remove the color for category 'increased' when absent
-    if (("Increased" %in% df$Change) == FALSE) {
-      newColors <- newColors[c(1, 3)]
-      
-    }
-    
     
     ############## Adjust X-scaling if necessary ##########
     
@@ -537,7 +369,6 @@ server <- function(input, output, session) {
       rng_x <- c(NULL, NULL)
     }
     
-    
     ############## Adjust Y-scaling if necessary ##########
     
     #Adjust scale if range for y (min,max) is specified
@@ -548,8 +379,6 @@ server <- function(input, output, session) {
       rng_y <- c(NULL, NULL)
     }
     
-    
-    
     p <-  ggplot(data = df) +
       aes(x = `Fold change (log2)`) +
       aes(y = `Significance`) +
@@ -558,42 +387,26 @@ server <- function(input, output, session) {
         size = input$pointSize,
         shape = 16
       ) +
-      
-      
-      
-      # This needs to go here (before annotations)
-      theme_light(base_size = 16) +
-      aes(color = Change) +
-      scale_color_manual(values = newColors) +
-      
-      NULL
-    
-    if (input$dark) {
-      p <- p + theme_light_dark_bg(base_size = 16)
-    }
-    
+      aes(color = Change)
     
     #Indicate cut-offs with dashed lines
     if (input$direction != "decreased")
       p <-
       p + geom_vline(
         xintercept = input$fc_cutoff[2],
-        linetype = "dashed",
-        color = line_color
+        linetype = "dashed"
       )
     if (input$direction != "increased")
       p <-
       p + geom_vline(
         xintercept = input$fc_cutoff[1],
-        linetype = "dashed",
-        color = line_color
+        linetype = "dashed"
       )
     
     p <-
       p + geom_hline(
         yintercept = input$p_cutoff,
-        linetype = "dashed",
-        color = line_color
+        linetype = "dashed"
       )
     
     # if log-scale checked specified
@@ -613,14 +426,12 @@ server <- function(input, output, session) {
           data = df_top(),
           aes(x = `Fold change (log2)`, y = `Significance`),
           shape = 1,
-          color = line_color,
           size = input$pointSize
         ) +
         geom_text_repel(
           data = df_top(),
           aes(label = Name),
           size = input$fnt_sz_cand,
-          color = line_color,
           nudge_x = 0.2,
           nudge_y = 0.2,
           box.padding = unit(0.9, "lines"),
@@ -655,9 +466,6 @@ server <- function(input, output, session) {
                        ylim = c(rng_y[1], rng_y[2]))
     }
     ########## Do some formatting of the lay-out ##########
-    
-    
-    
     # if title specified
     
     if (!is.null(input$title)) {
