@@ -1,13 +1,12 @@
 library(shiny)
+library(bs4Dash)
 library(ggplot2)
 library(magrittr)
 library(dplyr)
 library(ggrepel)
-library(shinycssloaders)
-library(readxl)
-library(DT)
-library(RCurl)
+library(thematic)
 library(tercen)
+library(waiter)
 
 ############################################
 #### This part should not be included in ui.R and server.R scripts
@@ -43,266 +42,373 @@ getCtx <- function(session) {
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 # ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
+# Makes sure the plot theme changes 
+# with the dashboad skin (dark, light)
+thematic::thematic_shiny(font = "Source Sans Pro")
+
+# in 1
 #####
-# Define UI
-ui <- fluidPage(
-  # Application title
-  titlePanel("VolcaNoseR - Exploring volcano plots"),
-  
-  # Sidebar with a slider input for number of bins
-  sidebarLayout(
-    sidebarPanel(
-      width = 3,
-      conditionalPanel(
-        condition = "input.tabs=='Plot'",
-        
-        checkboxInput(
-          "xy",
-          label = h4('Select X & Y variables'),
-          value = FALSE
-        ),
-        conditionalPanel(
-          condition = 'input[["xy"]] == true',
-          
-          selectInput("x_var", label = "X-axis; Effect (fold change)", choices = NULL),
-          selectInput("y_var", label = "Y-axis; Significance (p-value)", choices = NULL),
-          selectInput("g_var", label = "Select column with names", choices = NULL)
-        ),
-        
-        checkboxInput("aesth", label = h4("Aesthetics"), value = FALSE),
-        conditionalPanel(
-          condition = 'input[["aesth"]] == true',
-          sliderInput("pointSize", "Size of the datapoints", 0, 10, 4),
-          sliderInput("alphaInput", "Visibility of the data", 0, 1, 0.8)
-        ),
-        
-        checkboxInput(
-          "hits",
-          label = h4("Selection & Annotation of hits"),
-          value = FALSE
-        ),
-        conditionalPanel(
-          condition = 'input[["hits"]] == true',
-          
-          sliderInput(
-            "fc_cutoff",
-            "Fold Change threshold:",-5,
-            5,
-            step = 0.1,
-            value = c(-1.5, 1.5)
-          ),
-          sliderInput(
-            "p_cutoff",
-            "Significance threshold:",
-            0,
-            5,
-            step = 0.1,
-            value = 2
-          ),
-          selectInput(
-            "direction",
-            label = "Use thresholds to annotate:",
-            choices = list(
-              "All (ignores thresholds)" = "all",
-              "Changed (and significant)" = "significant",
-              "Increased (and significant)" = "increased",
-              "Decreased (and significant)" = "decreased"
-            ),
-            selected = "significant"
-          ),
-          
-          selectInput(
-            "criterion",
-            label = "Criterion for ranking hits:",
-            choices = list(
-              "Manhattan distance" = "manh",
-              "Euclidean distance" = "euclid",
-              "Fold change" = "fc",
-              "Significance" = "sig"
-            ),
-            selected = "manh"
-          ),
-          
-          numericInput("top_x", "Number of top hits (0 to hide):", value = 10),
-          
-          selectizeInput(
-            inputId = 'user_gene_list',
-            label = "User selected hits:",
-            choices = NULL,
-            selected = NULL,
-            multiple = TRUE,
-            # allow for multiple inputs
-            options = list(create = TRUE)
-          ),
-          # if TRUE, allows newly created inputs
-          
-          checkboxInput(
-            inputId = "show_table",
-            label = "Show table with hits",
-            value = FALSE
-          ),
-          checkboxInput(
-            inputId = "hide_labels",
-            label = "Hide labels in the plot",
-            value = FALSE
-          ),
-          
-          radioButtons(
-            "adjustcolors",
-            "Color (Unchanged,Increased,Decreased)",
-            choices =
-              list(
-                "Grey, Red, Blue" = 1,
-                "Grey, Blue, Green" = 3,
-                "Grey, Cyan, Purple" = 4,
-                "User defined" = 5
-              ),
-            selected =  1
-          ),
-          conditionalPanel(
-            condition = "input.adjustcolors == 5",
-            textInput("user_color_list", "List of names or hexadecimal codes", value = "turquoise2,#FF2222,lawngreen")
-          ),
-          checkboxInput(
-            inputId = "dark",
-            label = "Dark Theme",
-            value = FALSE
-          )
-        ),
-        
-        checkboxInput(
-          "scale",
-          label = h4("Transformation & Scaling"),
-          value = FALSE
-        ),
-        conditionalPanel(
-          condition = 'input[["scale"]] == true',
-          
-          checkboxInput(
-            inputId = "rotate_plot",
-            label = "Rotate plot 90 degrees",
-            value = FALSE
-          ),
-          checkboxInput(
-            inputId = "add_grid",
-            label = "Add gridlines",
-            value = FALSE
-          ),
-          checkboxInput(
-            inputId = "change_scale",
-            label = "Change scale",
-            value = FALSE
-          ),
-          conditionalPanel(
-            condition = "input.change_scale == true",
-            
-            textInput("range_x", "Range x-axis (min,max)", value = "")
-          ),
-          
-          conditionalPanel(
-            condition = "input.change_scale == true",
-            textInput("range_y", "Range y-axis (min,max)", value = ""),
-            checkboxInput(
-              inputId = "scale_log_10",
-              label = "Log10 scale on y-axis",
-              value = FALSE
-            )
-            
-          ),
-          numericInput("plot_height", "Plot height (# pixels): ", value = 600),
-          numericInput("plot_width", "Plot width (# pixels):", value = 800)
-        ),
-        
-        checkboxInput("labels", label = h4("Labels"), value = FALSE),
-        conditionalPanel(
-          condition = 'input[["labels"]] == true',
-          
-          checkboxInput(
-            inputId = "add_title",
-            label = "Add title",
-            value = FALSE
-          ),
-          conditionalPanel(condition = "input.add_title == true",
-                           textInput("title", "Title:", value = "")),
-          
-          checkboxInput(
-            inputId = "label_axes",
-            label = "Change axis labels",
-            value = FALSE
-          ),
-          conditionalPanel(
-            condition = "input.label_axes == true",
-            textInput("lab_x", "X-axis:", value = ""),
-            textInput("lab_y", "Y-axis:", value = "")
-            
-          ),
-          
-          checkboxInput(
-            inputId = "adj_fnt_sz",
-            label = "Change font size",
-            value = FALSE
-          ),
-          conditionalPanel(
-            condition = "input.adj_fnt_sz == true",
-            numericInput("fnt_sz_title", "Plot title:", value = 24),
-            numericInput("fnt_sz_labs", "Axis titles:", value = 24),
-            numericInput("fnt_sz_ax", "Axis labels:", value = 18),
-            numericInput("fnt_sz_cand", "Labels of hits:", value = 6)
-            
-          ),
-          
-          checkboxInput(
-            inputId = "add_legend",
-            label = "Add legend",
-            value = FALSE
-          ),
-          
-          NULL
-        ),
-        
-        conditionalPanel(condition = "input.tabs=='iPlot'", h4("iPlot"))
-      ),
-      
-        conditionalPanel(
-          condition = "input.tabs=='About'",
-          h4("Find our other dataViz apps at:"),
-          a("https://huygens.science.uva.nl/", href = "https://huygens.science.uva.nl/")
-        )
-    ),
-    #Close sidebarPanel
+in_1 <- conditionalPanel(
+  condition = "input.side == 'xy'",
+  bs4Dash::box(
+  selectInput(
+    inputId = "x_var",
+    label = "X-axis; Effect (fold change)",
+    choices = "",
+    selected = NULL
+  ),
+  selectInput(
+    inputId = "y_var",
+    label = "Y-axis; Significance (p-value)",
+    choices = "",
+    selected = NULL
+  ),
+  selectInput(
+    inputId = "g_var",
+    label = "Select column with names",
+    choices = "",
+    selected = NULL
+  ))
+)
+#####  
+
+# in 2
+#####
+
+in_2 <- conditionalPanel(
+  condition = "input.side == 'aesth'",
+  bs4Dash::box(
+    title = "Plot aesthetics",
+    width = 12,
+    status = "olive",
+    collapsible = FALSE,
+    solidHeader = TRUE,
     
-    # Show a plot of the generated distribution
-    mainPanel(tabsetPanel(
-      id = "tabs",
-      tabPanel(
-        "Plot",
-        h3("Volcano Plot"),
-        downloadButton("downloadPlotPDF", "Download pdf-file"),
-        downloadButton("downloadPlotPNG", "Download png-file"),
+    sliderInput(
+      inputId = "pointSize",
+      label = "Point size",
+      value = 4,
+      min = 0,
+      max = 10,
+      step =  1
+    ),
+    sliderInput(
+      inputId = "alphaInput",
+      label = "Transparency (alpha)",
+      value = 0.8,
+      min = 0,
+      max = 1,
+      step = 0.05
+    )
+  )
+)
+
+#####
+
+# in_3
+#####
+
+in_3 <- conditionalPanel(
+  condition = "input.side == 'hits'",
+  bs4Dash::box(
+    title = "Selection & Annotation",
+    width = 12,
+    status = "olive",
+    collapsible = FALSE,
+    solidHeader = TRUE,
+    
+    sliderInput(
+      inputId = "fc_cutoff",
+      label = "Fold Change threshold",
+      min = -5,
+      max = 5,
+      step = 0.1,
+      value = c(-1.5, 1.5)
+    ),
+    
+    sliderInput(
+      inputId = "p_cutoff",
+      label = "Significance threshold",
+      min = 0,
+      max = 5,
+      step = 0.1,
+      value = 2
+    ),
+    selectInput(
+      inputId = "direction",
+      label = "Use thresholds to annotate:",
+      choices = list(
+        "All (ignores thresholds)" = "all",
+        "Changed (and significant)" = "significant",
+        "Increased (and significant)" = "increased",
+        "Decreased (and significant)" = "decreased"
+      ),
+      selected = "significant"
+    ),
+    
+    selectInput(
+      "criterion",
+      label = "Criterion for ranking hits:",
+      choices = list(
+        "Manhattan distance" = "manh",
+        "Euclidean distance" = "euclid",
+        "Fold change" = "fc",
+        "Significance" = "sig"
+      ),
+      selected = "manh"
+    ),
+    
+    numericInput("top_x", "Number of top hits (0 to hide):", value = 10),
+    
+    selectizeInput(
+      inputId = 'user_gene_list',
+      label = "User selected hits:",
+      choices = NULL,
+      selected = NULL,
+      multiple = TRUE,
+      options = list(create = TRUE)
+    ),
+    
+    checkboxInput(
+      inputId = "hide_labels",
+      label = "Hide labels in the plot",
+      value = FALSE
+    )#,
+    
+    # radioButtons(
+    #   inputId = "adjustcolors",
+    #   label = "Color (Unchanged,Increased,Decreased)",
+    #   choices =
+    #     list(
+    #       "Grey, Red, Blue" = 1,
+    #       "Grey, Blue, Green" = 3,
+    #       "Grey, Cyan, Purple" = 4,
+    #       "User defined" = 5
+    #     ),
+    #   selected =  1
+    # ),
+    # conditionalPanel(
+    #   condition = "input.adjustcolors == 5",
+    #   textInput("user_color_list", "List of names or hexadecimal codes", value = "turquoise2,#FF2222,lawngreen")
+    # )
+  )
+)
+
+#####
+
+# in_4
+#####
+
+in_4 <- conditionalPanel(
+  condition = "input.side == 'scale'",
+  bs4Dash::box(
+    title = "Scaling & Transformation",
+    width = 12,
+    status = "olive",
+    collapsible = FALSE,
+    solidHeader = TRUE,
+  checkboxInput(
+    inputId = "rotate_plot",
+    label = "Rotate plot 90 degrees",
+    value = FALSE
+  ),
+  checkboxInput(
+    inputId = "add_grid",
+    label = "Add gridlines",
+    value = FALSE
+  ),
+  checkboxInput(
+    inputId = "change_scale",
+    label = "Change scale",
+    value = FALSE
+  ),
+  conditionalPanel(
+    condition = "input.change_scale == true",
+    textInput("range_x", "Range x-axis (min,max)", value = "")
+  ),
+  conditionalPanel(
+    condition = "input.change_scale == true",
+    textInput("range_y", "Range y-axis (min,max)", value = ""),
+    checkboxInput(
+      inputId = "scale_log_10",
+      label = "Log10 scale on y-axis",
+      value = FALSE
+    )
+  ),
+  numericInput("plot_height", "Plot height (# pixels): ", value = 600),
+  numericInput("plot_width", "Plot width (# pixels):", value = 750)
+  )
+)
+
+#####
+
+# in_5
+#####
+in_5 <- conditionalPanel(
+  condition = "input.side == 'label'",
+  bs4Dash::box(
+    title = "Labels",
+    width = 12,
+    status = "olive",
+    collapsible = FALSE,
+    solidHeader = TRUE,
+  checkboxInput(
+    inputId = "add_title",
+    label = "Add title",
+    value = FALSE
+  ),
+  conditionalPanel(condition = "input.add_title == true",
+                   textInput("title", "Title:", value = "")),
+  checkboxInput(
+    inputId = "label_axes",
+    label = "Change axis labels",
+    value = FALSE
+  ),
+  conditionalPanel(
+    condition = "input.label_axes == true",
+    textInput("lab_x", "X-axis:", value = ""),
+    textInput("lab_y", "Y-axis:", value = "")
+  ),
+  checkboxInput(
+    inputId = "adj_fnt_sz",
+    label = "Change font size",
+    value = FALSE
+  ),
+  conditionalPanel(
+    condition = "input.adj_fnt_sz == true",
+    numericInput("fnt_sz_title", "Plot title:", value = 20),
+    numericInput("fnt_sz_labs", "Axis titles:", value = 16),
+    numericInput("fnt_sz_ax", "Axis labels:", value = 14),
+    numericInput("fnt_sz_cand", "Labels of hits:", value = 6)
+  ),
+  
+  checkboxInput(
+    inputId = "add_legend",
+    label = "Add legend",
+    value = FALSE
+  )
+))
+#####
+
+# in_6
+#####
+in_6 <- conditionalPanel(
+  condition = "input.side == 'about'",
+  bs4Dash::box(
+    title = "About VolcaNoseR",
+    width = 12,
+    status = "olive",
+    collapsible = FALSE,
+    solidHeader = TRUE,
+    
+    includeHTML("about.html")
+  )
+)
+#####
+
+# Main UI
+#####
+
+ui <- dashboardPage(
+  title = "Tercen|Volcano plot",
+  preloader = list(html = spin_1(), color = "#333e48"),
+  header = dashboardHeader(
+    status = "olive",
+    dashboardBrand(title = "VolcaNoseR - Exploring volcano plots",
+                   href = "https://github.com/JoachimGoedhart/VolcaNoseR"),
+    title = dashboardBrand(
+      title = "Tercen::Volcano",
+      href = "https://github.com/teofiln/volcano_shiny_operator",
+      image = "tercen.png"
+    )
+  ),
+  sidebar = dashboardSidebar(
+    width = "15%",
+    status = "olive",
+    sidebarMenu(
+      id = "side",
+      compact = TRUE,
+      # menuItem(tabName = 'xy', text = "Fold change and significance", icon = icon("chart-bar")),
+      menuItem(
+        tabName = 'about',
+        text = "About",
+        icon = icon("user")
+      ),
+      menuItem(
+        tabName = "hits",
+        text = "Selection & Annotation",
+        icon = icon("dna")
+      ),
+      menuItem(
+        tabName = "scale",
+        text = "Scaling & Transformation",
+        icon = icon("ruler")
+      ),
+      menuItem(
+        tabName = "aesth",
+        text = "Aesthetics",
+        icon = icon("adjust")
+      ),
+      menuItem(
+        tabName = "label",
+        text = "Labels",
+        icon = icon("tags")
+      )
+    )
+  ),
+  
+  body = dashboardBody(
+    
+    # to prevent timeout 
+    shinyjs::useShinyjs(),
+    tags$script(HTML('setInterval(function(){ $("#hiddenButton").click(); }, 1000*4);')),
+    tags$footer(shinyjs::hidden(actionButton(inputId = "hiddenButton", label="hidden"))),
+    
+    fluidRow(
+    column(
+      width = 8,
+      bs4Dash::box(
+        title = "Volcano Plot",
+        width = 12,
+        height = 700,
+        status = "olive",
+        collapsible = FALSE,
+        solidHeader = TRUE,
+        elevation = 2,
+        downloadButton("downloadPlotPDF", "Download pdf"),
+        downloadButton("downloadPlotPNG", "Download png"),
+        div(style="height: 4px;"),
         div(
           style = "position:relative",
           plotOutput(
-            "coolplot",
+            outputId = "coolplot",
             hover = hoverOpts("plot_hover", delay = 10, delayType = "debounce")
           ),
           uiOutput("hover_info")
         )
-      ),
-      tabPanel("About", includeHTML("about.html"))
-    ))   #Close mainPanel
-  ) #Close sidebarLayout
-) #Close fluidPage
+      )
+    ),
+    column(width = 4,
+           # in_1,
+           in_2,
+           in_3,
+           in_4,
+           in_5,
+           in_6)
+  )))
 
 #####
 server <- function(input, output, session) {
+  
+  ## For plot background to switch with dashboard theme
+  useAutoColor()
+  
+  ## For loading spinner in plot when plot is rendered
+  w <- Waiter$new(id = "coolplot")
+  
+  
   # Session variable - initialize defaults
   genelist.selected <- ""
-  x_var.selected <- ".x"
-  y_var.selected <- ".y"
-  g_var.selected <- "gene_name"
-  
-  # transform_var_x.selected <- "-"
-  # transform_var_y.selected <- "-"
   
   ###### DATA INPUT ###################
   
@@ -311,7 +417,6 @@ server <- function(input, output, session) {
     values <- list()
     values$data <- ctx %>% 
       select(.x, .y, gene_name)
-      
     return(values)
   }
   
@@ -322,85 +427,62 @@ server <- function(input, output, session) {
   #### DISPLAY UPLOADED DATA (as provided) ##################
   # this part removed as the data are displayed in the Tercen crosstab
   
-  ##### Get Variables from the input ##############
-  
-  observe({
-    df <- getData()
-    
-    var_names  <- names(df)
-    
-    # Get the names of columns that are factors.
-    nms_fact <-
-      names(Filter(
-        function(x)
-          is.factor(x) ||
-          is.integer(x) || is.logical(x) || is.character(x),
-        df
-      ))
-    nms_var <-
-      names(Filter(function(x)
-        is.integer(x) || is.numeric(x) || is.double(x), df))
-    nms_fact <- c("-", nms_fact)
-    
-    updateSelectInput(session, "x_var", choices = var_names, selected = x_var.selected)
-    updateSelectInput(session, "y_var", choices = var_names, selected = y_var.selected)
-    
-    updateSelectInput(session, "g_var", choices = nms_fact, selected = g_var.selected)
-    updateSelectizeInput(session, "user_gene_list", selected = genelist.selected)
-  })
-  
   ################ Select top hits #########
   df_top  <- reactive({
     df <- df_filtered()
     
-    
     if (input$direction == "increased") {
       df <- df %>% filter(Change == "Increased")
-      
     } else if (input$direction == "decreased") {
       df <- df %>% filter(Change == "Decreased")
-      
     } else if (input$direction == "significant") {
       df <- df %>% filter(Change != "Unchanged")
-      
     }
-    
     
     if (input$criterion == "manh") {
       df <-
-        df %>% mutate(`Manhattan distance` = abs(`Significance`) + abs(`Fold change (log2)`)) %>% arrange(desc(`Manhattan distance`))
+        df %>%
+        mutate(`Manhattan distance` = abs(`Significance`) + abs(`Fold change (log2)`)) %>%
+        arrange(desc(`Manhattan distance`))
+      
       df_out <-
-        df %>% top_n(input$top_x, `Manhattan distance`) %>% select(Name,
-                                                                   Change,
-                                                                   `Fold change (log2)`,
-                                                                   `Significance`,
-                                                                   `Manhattan distance`)
+        df %>%
+        top_n(input$top_x, `Manhattan distance`) %>%
+        select(Name,
+               Change,
+               `Fold change (log2)`,
+               `Significance`,
+               `Manhattan distance`)
     } else if (input$criterion == "euclid") {
       df <-
-        df %>% mutate(`Euclidean distance` = sqrt((`Significance`) ^ 2 + (`Fold change (log2)`) ^
-                                                    2)) %>% arrange(desc(`Euclidean distance`))
+        df %>%
+        mutate(`Euclidean distance` = sqrt((`Significance`) ^ 2 + (`Fold change (log2)`) ^2)) %>%
+        arrange(desc(`Euclidean distance`))
+      
       df_out <-
-        df %>% top_n(input$top_x, `Euclidean distance`) %>% select(Name,
-                                                                   Change,
-                                                                   `Fold change (log2)`,
-                                                                   `Significance`,
-                                                                   `Euclidean distance`)
+        df %>%
+        top_n(input$top_x, `Euclidean distance`) %>%
+        select(Name,
+               Change,
+               `Fold change (log2)`,
+               `Significance`,
+               `Euclidean distance`)
+      
     } else if (input$criterion == "fc") {
       df <- df %>% arrange(desc(abs(`Fold change (log2)`)))
       df_out <-
-        df %>% top_n(input$top_x, abs(`Fold change (log2)`)) %>% 
+        df %>% top_n(input$top_x, abs(`Fold change (log2)`)) %>%
         select(Name, Change, `Fold change (log2)`, `Significance`)
     } else if (input$criterion == "sig") {
       df <- df %>% arrange(desc(`Significance`))
       df_out <-
-        df %>% top_n(input$top_x, `Significance`) %>% 
+        df %>% top_n(input$top_x, `Significance`) %>%
         select(Name, Change, `Fold change (log2)`, `Significance`)
     }
     
     #Add user selected hits, but remove them when already present
-    df_out <-
-      bind_rows(df_out, df_user()) %>% distinct(Name, .keep_all = TRUE)
-    # }
+    df_out <- bind_rows(df_out, df_user()) %>% 
+      distinct(Name, .keep_all = TRUE)
     
     # observe({print(df_out)})
     return(df_out)
@@ -425,48 +507,28 @@ server <- function(input, output, session) {
     }
     
     return(df_selected_by_name)
-    
-    
   })
   
   ################ SELECT COLUMNS AND ANNOTATE CHANGES #########
   df_filtered <- reactive({
-    req(input$x_var)
-    req(input$y_var)
-    req(input$g_var)
     
     df <- getData()
     
-    x_choice <- input$x_var
-    y_choice <- input$y_var
-    g_choice <- input$g_var
-    
-    
-    if (g_choice == "-") {
-      koos <-
-        df %>% select(
-          `Fold change (log2)` = !!x_choice ,
-          `Significance` = !!y_choice
-        )
-      koos$Name <- " "
-    } else if (g_choice != "-") {
-      koos <-
-        df %>% select(
-          `Fold change (log2)` = !!x_choice ,
-          `Significance` = !!y_choice,
-          Name = input$g_var
-        )
+    koos <-
+      df %>% select(
+        `Fold change (log2)` = .x,
+        `Significance` = .y,
+        Name = gene_name
+      )
       #Remove  names after semicolon for hits with multiple names, seperated by semicolons, e.g.: POLR2J3;POLR2J;POLR2J2
       koos <- koos %>% mutate(Name = gsub(';.*', '', Name))
-      
-    }
     
     #Update the gene list for user selection
     updateSelectizeInput(session,
                          "user_gene_list",
                          choices = koos$Name,
+                         server = TRUE,
                          selected = genelist.selected)
-    
     
     foldchange_min = input$fc_cutoff[1]
     foldchange_max = input$fc_cutoff[2]
@@ -502,26 +564,9 @@ server <- function(input, output, session) {
     }
     
     return(koos)
-    
   })
   
-  ############## Render the data summary as a dataTable ###########
-  
-  # output$toptableDT <- renderDataTable(
-  #
-  #   df_top(),
-  #   extensions = c('Buttons'),
-  #   rownames = FALSE,
-  #   options = list(dom = 'Blfrtip', buttons = c('copy', 'csv','excel', 'pdf'), autoWidth = FALSE, lengthMenu = c(20, 50, 100)),
-  #   editable = FALSE,selection = 'none'
-  # )
-  
   plot_data <- reactive({
-    if (input$dark) {
-      line_color = "white"
-    } else {
-      line_color = "gray20"
-    }
     
     ############## Adjust X-scaling if necessary ##########
     
@@ -551,45 +596,6 @@ server <- function(input, output, session) {
     df$Change <-
       factor(df$Change, levels = c("Unchanged", "Increased", "Decreased"))
     
-    ########## Determine color use #############
-    if (input$adjustcolors == 1 && input$dark) {
-      newColors <- c("#505050", "#FF3333", "#0092CC")
-    } else if (input$adjustcolors == 1 && input$dark == FALSE) {
-      newColors <- c("grey", "red", "blue")
-    }
-    
-    if (input$adjustcolors == 3 && input$dark) {
-      newColors <- c("#505050", "deepskyblue", "green")
-    } else if (input$adjustcolors == 3 && input$dark == FALSE) {
-      newColors <- c("Grey80", "darkblue", "darkgreen")
-    }
-    
-    
-    if (input$adjustcolors == 4 && input$dark) {
-      newColors <- c("#505050", "#03DAC5", "#BB86FC")
-    }
-    else if (input$adjustcolors == 4 && input$dark == FALSE)
-    {
-      newColors <- c("grey", "turquoise4", "#9932CC")
-      # } else if (input$adjustcolors == 6) {
-      #   newColors <- Okabe_Ito
-    }
-    
-    if (input$adjustcolors == 5) {
-      newColors <-
-        gsub("\\s", "", strsplit(input$user_color_list, ",")[[1]])
-      
-      #If unsufficient colors available, repeat
-      if (length(newColors) < 3) {
-        newColors <- rep(newColors, times = (round(3 / length(newColors))) + 1)
-      }
-    }
-    
-    # Remove the color for category 'increased' when absent
-    if (("Increased" %in% df$Change) == FALSE) {
-      newColors <- newColors[c(1, 3)]
-    }
-    
     p <-  ggplot(data = df) +
       aes(x = `Fold change (log2)`) +
       aes(y = `Significance`) +
@@ -598,39 +604,26 @@ server <- function(input, output, session) {
         size = input$pointSize,
         shape = 16
       ) +
-      
-      # This needs to go here (before annotations)
-      theme_light(base_size = 16) +
-      aes(color = Change) +
-      scale_color_manual(values = newColors) +
-      NULL
-    
-    if (input$dark) {
-      p <- p + theme_light_dark_bg(base_size = 16)
-    }
-    
+      aes(color = Change)
     
     #Indicate cut-offs with dashed lines
     if (input$direction != "decreased")
       p <-
       p + geom_vline(
         xintercept = input$fc_cutoff[2],
-        linetype = "dashed",
-        color = line_color
+        linetype = "dashed"
       )
     if (input$direction != "increased")
       p <-
       p + geom_vline(
         xintercept = input$fc_cutoff[1],
-        linetype = "dashed",
-        color = line_color
+        linetype = "dashed"
       )
     
     p <-
       p + geom_hline(
         yintercept = input$p_cutoff,
-        linetype = "dashed",
-        color = line_color
+        linetype = "dashed"
       )
     
     # if log-scale checked specified
@@ -650,21 +643,18 @@ server <- function(input, output, session) {
           data = df_top(),
           aes(x = `Fold change (log2)`, y = `Significance`),
           shape = 1,
-          color = line_color,
           size = (input$pointSize)
         ) +
         geom_text_repel(
           data = df_top(),
           aes(label = Name),
           size = input$fnt_sz_cand,
-          color = line_color,
           nudge_x = 0.2,
           nudge_y = 0.2,
           box.padding = unit(0.9, "lines"),
           point.padding = unit(.3 + input$pointSize * 0.1, "lines"),
           show.legend = F
         )
-      
     }
     
     p <-
@@ -678,8 +668,6 @@ server <- function(input, output, session) {
     }
     
     ########## Do some formatting of the lay-out ##########
-    
-    
     
     # if title specified
     if (!is.null(input$title)) {
@@ -720,7 +708,6 @@ server <- function(input, output, session) {
     }
     
     p
-    
   })
   
   
@@ -735,64 +722,13 @@ server <- function(input, output, session) {
   })
   
   output$coolplot <- renderPlot(width = width, height = height, {
-    req(input$x_var)
-    req(input$y_var)
-    req(input$g_var)
-    
-    if (input$dark) {
-      line_color = "white"
-    } else {
-      line_color = "gray20"
-    }
+    w$show()
+    w$hide()
     
     df <- as.data.frame(df_filtered())
     #Convert 'Change' to a factor to keep this order, necessary for getting the colors right
     df$Change <-
       factor(df$Change, levels = c("Unchanged", "Increased", "Decreased"))
-    
-    
-    ########## Determine color use #############
-    if (input$adjustcolors == 1 && input$dark) {
-      newColors <- c("#505050", "#FF3333", "#0092CC")
-    } else if (input$adjustcolors == 1 && input$dark == FALSE) {
-      newColors <- c("grey", "red", "blue")
-    }
-    
-    if (input$adjustcolors == 3 && input$dark) {
-      newColors <- c("#505050", "deepskyblue", "green")
-    } else if (input$adjustcolors == 3 && input$dark == FALSE) {
-      newColors <- c("Grey80", "darkblue", "darkgreen")
-    }
-    
-    
-    if (input$adjustcolors == 4 && input$dark) {
-      newColors <- c("#505050", "#03DAC5", "#BB86FC")
-    }
-    else if (input$adjustcolors == 4 && input$dark == FALSE)
-    {
-      newColors <- c("grey", "turquoise4", "#9932CC")
-      # } else if (input$adjustcolors == 6) {
-      #   newColors <- Okabe_Ito
-    }
-    
-    if (input$adjustcolors == 5) {
-      newColors <-
-        gsub("\\s", "", strsplit(input$user_color_list, ",")[[1]])
-      
-      #If unsufficient colors available, repeat
-      if (length(newColors) < 3) {
-        newColors <- rep(newColors, times = (round(3 / length(newColors))) + 1)
-      }
-      
-      
-    }
-    
-    # Remove the color for category 'increased' when absent
-    if (("Increased" %in% df$Change) == FALSE) {
-      newColors <- newColors[c(1, 3)]
-      
-    }
-    
     
     ############## Adjust X-scaling if necessary ##########
     
@@ -807,7 +743,6 @@ server <- function(input, output, session) {
       rng_x <- c(NULL, NULL)
     }
     
-    
     ############## Adjust Y-scaling if necessary ##########
     
     #Adjust scale if range for y (min,max) is specified
@@ -818,8 +753,6 @@ server <- function(input, output, session) {
       rng_y <- c(NULL, NULL)
     }
     
-    
-    
     p <-  ggplot(data = df) +
       aes(x = `Fold change (log2)`) +
       aes(y = `Significance`) +
@@ -828,42 +761,26 @@ server <- function(input, output, session) {
         size = input$pointSize,
         shape = 16
       ) +
-      
-      
-      
-      # This needs to go here (before annotations)
-      theme_light(base_size = 16) +
-      aes(color = Change) +
-      scale_color_manual(values = newColors) +
-      
-      NULL
-    
-    if (input$dark) {
-      p <- p + theme_light_dark_bg(base_size = 16)
-    }
-    
+      aes(color = Change)
     
     #Indicate cut-offs with dashed lines
     if (input$direction != "decreased")
       p <-
       p + geom_vline(
         xintercept = input$fc_cutoff[2],
-        linetype = "dashed",
-        color = line_color
+        linetype = "dashed"
       )
     if (input$direction != "increased")
       p <-
       p + geom_vline(
         xintercept = input$fc_cutoff[1],
-        linetype = "dashed",
-        color = line_color
+        linetype = "dashed"
       )
     
     p <-
       p + geom_hline(
         yintercept = input$p_cutoff,
-        linetype = "dashed",
-        color = line_color
+        linetype = "dashed"
       )
     
     # if log-scale checked specified
@@ -883,14 +800,12 @@ server <- function(input, output, session) {
           data = df_top(),
           aes(x = `Fold change (log2)`, y = `Significance`),
           shape = 1,
-          color = line_color,
           size = input$pointSize
         ) +
         geom_text_repel(
           data = df_top(),
           aes(label = Name),
           size = input$fnt_sz_cand,
-          color = line_color,
           nudge_x = 0.2,
           nudge_y = 0.2,
           box.padding = unit(0.9, "lines"),
@@ -925,9 +840,6 @@ server <- function(input, output, session) {
                        ylim = c(rng_y[1], rng_y[2]))
     }
     ########## Do some formatting of the lay-out ##########
-    
-    
-    
     # if title specified
     
     if (!is.null(input$title)) {
