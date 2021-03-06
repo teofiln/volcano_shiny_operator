@@ -22,12 +22,11 @@ getCtx <- function(session) {
 }
 ####
 ############################################
-#####
 
 server <- function(input, output, session) {
   
-  ## For plot background to switch with dashboard theme
-  useAutoColor()
+  ## For plot theme to switch with dashboard theme
+  # useAutoColor()
   
   ## For loading spinner in plot when plot is rendered
   w <- Waiter$new(id = "coolplot")
@@ -40,9 +39,10 @@ server <- function(input, output, session) {
   
   getValues <- function(session){
     ctx <- getCtx(session)
+    labs <- ctx$labels[[1]]
     values <- list()
-    values$data <- ctx %>% 
-      select(.x, .y, gene_name)
+    vars <- c(".x", ".y", labs)
+    values$data <- ctx$select(vars)
     return(values)
   }
   
@@ -230,7 +230,8 @@ server <- function(input, output, session) {
         size = input$pointSize,
         shape = 16
       ) +
-      aes(color = Change)
+      aes(color = Change) +
+      theme_bw()
     
     #Indicate cut-offs with dashed lines
     if (input$direction != "decreased")
@@ -387,7 +388,8 @@ server <- function(input, output, session) {
         size = input$pointSize,
         shape = 16
       ) +
-      aes(color = Change)
+      aes(color = Change) +
+      theme_bw()
     
     #Indicate cut-offs with dashed lines
     if (input$direction != "decreased")

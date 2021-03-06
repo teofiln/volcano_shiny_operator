@@ -26,7 +26,7 @@ library(waiter)
 
 # Makes sure the plot theme changes 
 # with the dashboad skin (dark, light)
-thematic::thematic_shiny(font = "Source Sans Pro")
+# thematic::thematic_shiny(font = "Source Sans Pro")
 
 # in 1
 #####
@@ -62,7 +62,7 @@ in_2 <- conditionalPanel(
   bs4Dash::box(
     title = "Plot aesthetics",
     width = 12,
-    status = "olive",
+    status = "primary",
     collapsible = FALSE,
     solidHeader = TRUE,
     
@@ -95,7 +95,7 @@ in_3 <- conditionalPanel(
   bs4Dash::box(
     title = "Selection & Annotation",
     width = 12,
-    status = "olive",
+    status = "primary",
     collapsible = FALSE,
     solidHeader = TRUE,
     
@@ -186,7 +186,7 @@ in_4 <- conditionalPanel(
   bs4Dash::box(
     title = "Scaling & Transformation",
     width = 12,
-    status = "olive",
+    status = "primary",
     collapsible = FALSE,
     solidHeader = TRUE,
     checkboxInput(
@@ -231,7 +231,7 @@ in_5 <- conditionalPanel(
   bs4Dash::box(
     title = "Labels",
     width = 12,
-    status = "olive",
+    status = "primary",
     collapsible = FALSE,
     solidHeader = TRUE,
     checkboxInput(
@@ -279,7 +279,7 @@ in_6 <- conditionalPanel(
   bs4Dash::box(
     title = "About VolcaNoseR",
     width = 12,
-    status = "olive",
+    status = "primary",
     collapsible = FALSE,
     solidHeader = TRUE,
     
@@ -291,11 +291,10 @@ in_6 <- conditionalPanel(
 # Main UI
 #####
 
-ui <- dashboardPage(
+ui <- dashboardPage(dark = FALSE,
   title = "Tercen|Volcano plot",
   preloader = list(html = spin_1(), color = "#333e48"),
   header = dashboardHeader(
-    status = "olive",
     dashboardBrand(title = "VolcaNoseR - Exploring volcano plots",
                    href = "https://github.com/JoachimGoedhart/VolcaNoseR"),
     title = dashboardBrand(
@@ -304,9 +303,9 @@ ui <- dashboardPage(
       image = "tercen.png"
     )
   ),
-  sidebar = dashboardSidebar(
+  sidebar = dashboardSidebar(skin = "light",
     width = "15%",
-    status = "olive",
+    status = "primary",
     sidebarMenu(
       id = "side",
       compact = TRUE,
@@ -347,13 +346,20 @@ ui <- dashboardPage(
     tags$footer(shinyjs::hidden(actionButton(inputId = "hiddenButton", label="hidden"))),
     
     fluidRow(
+      column(width = 4,
+             # in_1,
+             in_2,
+             in_3,
+             in_4,
+             in_5,
+             in_6),
       column(
         width = 8,
         bs4Dash::box(
           title = "Volcano Plot",
           width = 12,
           height = 700,
-          status = "olive",
+          status = "primary",
           collapsible = FALSE,
           solidHeader = TRUE,
           elevation = 2,
@@ -369,12 +375,6 @@ ui <- dashboardPage(
             uiOutput("hover_info")
           )
         )
-      ),
-      column(width = 4,
-             # in_1,
-             in_2,
-             in_3,
-             in_4,
-             in_5,
-             in_6)
+      )
+
     )))
